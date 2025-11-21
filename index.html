@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestione Manutenzione Quadri Elettrici</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .view { display: none; }
+        .view.active { display: block; }
+        .nav-btn.active { background-color: #374151; border-left: 4px solid #10b981; }
+        .perm-hidden { display: none !important; }
+        .loader {
+            border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%;
+            width: 30px; height: 30px; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .dash-card { transition: all 0.2s; cursor: pointer; }
+        .dash-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-color: #3b82f6; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-gray-800">
+
+    <div id="init-loader" class="fixed inset-0 bg-white z-[60] flex flex-col items-center justify-center">
+        <div class="loader mb-4"></div>
+        <p class="text-gray-500 text-sm">Caricamento Sistema v5.5...</p>
+    </div>
+
+    <div id="login-screen" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center hidden">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm">
+            <div class="text-center mb-6">
+                <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="zap" class="w-8 h-8 text-blue-600"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-800">Accesso</h1>
+                <p class="text-sm text-gray-500">Manutenzione Quadri</p>
+            </div>
+            <form id="login-form" class="space-y-4">
+                <input type="text" id="login-user" placeholder="Username" class="w-full border p-2 rounded" required>
+                <input type="password" id="login-pass" placeholder="Password" class="w-full border p-2 rounded" required>
+                <p id="login-msg" class="text-red-500 text-xs text-center min-h-[1rem]"></p>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">Entra</button>
+            </form>
+            <p id="first-run-hint" class="text-xs text-gray-400 text-center mt-4 hidden">Admin Default: admin / admin</p>
+        </div>
+    </div>
+
+    <div id="app-container" class="flex h-full hidden">
+        <aside class="w-64 bg-white shadow-md flex flex-col z-10">
+            <div class="p-6 border-b border-gray-100">
+                <h2 class="text-xl font-bold text-blue-900 flex items-center gap-2"><i data-lucide="activity" class="w-6 h-6 text-emerald-500"></i> G.M.Q.E.</h2>
+                <p class="text-xs text-gray-400 mt-1">v5.5 Preview</p>
+            </div>
+            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+                <button onclick="nav('dashboard')" class="nav-btn active w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded transition"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard</button>
+                <button onclick="nav('maintenance')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded transition"><i data-lucide="wrench" class="w-5 h-5"></i> Manutenzione</button>
+                <button onclick="nav('history')" id="nav-history" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded transition perm-hidden"><i data-lucide="history" class="w-5 h-5"></i> Storico Globale</button>
+                <div class="pt-4 mt-4 border-t border-gray-100">
+                    <p class="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Gestione</p>
+                    <button onclick="nav('config')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded transition"><i data-lucide="settings" class="w-5 h-5"></i> Configurazione</button>
+                </div>
+                <div class="admin-only space-y-2 pt-2">
+                    <button onclick="nav('users')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded transition"><i data-lucide="users" class="w-5 h-5"></i> Utenti</button>
+                </div>
+                <div class="pt-2">
+                     <button onclick="nav('reports')" id="nav-reports" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded transition perm-hidden"><i data-lucide="file-bar-chart" class="w-5 h-5"></i> Report PDF</button>
+                </div>
+            </nav>
+            <div class="p-4 border-t border-gray-100 bg-gray-50">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold" id="avatar-initial">U</div>
+                    <div><p id="display-username" class="text-sm font-bold">Utente</p><p id="display-role" class="text-xs text-gray-500 uppercase">Ruolo</p></div>
+                </div>
+                <button onclick="logout()" class="w-full border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold py-2 rounded flex justify-center gap-2"><i data-lucide="log-out" class="w-3 h-3"></i> Esci</button>
+            </div>
+        </aside>
+
+        <main class="flex-1 overflow-y-auto p-8 relative">
+            <!-- DASHBOARD -->
+            <section id="view-dashboard" class="view active">
+                <div class="flex items-center text-sm text-gray-500 mb-6 bg-white p-3 rounded shadow-sm border">
+                    <button onclick="resetDashboard()" class="hover:text-blue-600 flex items-center font-bold text-gray-700 mr-4"><i data-lucide="home" class="w-4 h-4 mr-1"></i> Home</button>
+                    <span id="dash-breadcrumbs" class="flex items-center gap-2"></span>
+                </div>
+                <div id="dash-content-area"></div>
+            </section>
+            
+            <!-- MODAL: LISTA STORICO QUADRO (DASHBOARD) -->
+            <div id="modal-panel-history" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+                <div class="bg-white p-6 rounded-xl w-11/12 max-w-4xl h-5/6 shadow-2xl flex flex-col">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                        <div>
+                            <div class="flex items-center gap-2 group cursor-pointer transition-all" id="modal-history-title-container">
+                                <h3 class="font-bold text-xl group-hover:text-blue-600 group-hover:underline" id="modal-history-title">Quadro</h3>
+                                <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded border border-blue-200 font-bold flex items-center gap-1 group-hover:bg-blue-200"><i data-lucide="wrench" class="w-3 h-3"></i> Fai Manutenzione</span>
+                            </div>
+                            <p class="text-sm text-gray-500" id="modal-history-subtitle">Elenco Manutenzioni - Clicca sul titolo per nuova manutenzione</p>
+                        </div>
+                        <button onclick="closePanelHistory()" class="text-gray-500 hover:text-gray-800"><i data-lucide="x" class="w-6 h-6"></i></button>
+                    </div>
+                    <div class="overflow-y-auto flex-1" id="modal-history-list"></div>
+                </div>
+            </div>
+
+            <!-- MODAL: DETTAGLIO CHECKLIST (SOLA LETTURA) -->
+            <div id="modal-record-detail" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-[60]">
+                <div class="bg-white p-6 rounded-xl w-11/12 max-w-3xl h-auto max-h-[90vh] shadow-2xl flex flex-col">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2 bg-gray-50 -mx-6 px-6 -mt-6 pt-6 rounded-t-xl">
+                        <div>
+                            <h3 class="font-bold text-xl text-blue-900" id="detail-title">Dettaglio Intervento</h3>
+                            <p class="text-xs text-gray-500 flex gap-2 mt-1">
+                                <span id="detail-date" class="font-bold"></span> • 
+                                <span id="detail-tech"></span>
+                            </p>
+                        </div>
+                        <button onclick="document.getElementById('modal-record-detail').classList.add('hidden')" class="text-gray-400 hover:text-gray-800"><i data-lucide="x" class="w-6 h-6"></i></button>
+                    </div>
+                    <div class="overflow-y-auto flex-1 pr-2" id="detail-content">
+                        <!-- Checklist will be injected here -->
+                    </div>
+                    <div class="mt-4 pt-4 border-t text-right">
+                        <button onclick="document.getElementById('modal-record-detail').classList.add('hidden')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded">Chiudi</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: ANTEPRIMA PDF -->
+            <div id="modal-pdf-preview" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-[70]">
+                <div class="bg-white rounded-xl w-11/12 h-[90vh] flex flex-col shadow-2xl">
+                    <div class="flex justify-between items-center p-4 border-b">
+                        <h3 class="font-bold text-lg">Anteprima di Stampa</h3>
+                        <button onclick="document.getElementById('modal-pdf-preview').classList.add('hidden')" class="text-gray-500 hover:text-red-600"><i data-lucide="x" class="w-6 h-6"></i></button>
+                    </div>
+                    <div class="flex-1 bg-gray-100 p-4 overflow-hidden flex justify-center">
+                        <iframe id="pdf-preview-frame" class="w-full h-full border shadow bg-white"></iframe>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MAINTENANCE VIEW -->
+            <section id="view-maintenance" class="view">
+                <header class="mb-8 flex justify-between items-center">
+                    <h2 class="text-3xl font-bold text-gray-800" id="maintenance-title">Nuova Manutenzione</h2>
+                    <button id="btn-cancel-edit" class="hidden px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Annulla</button>
+                </header>
+                <div class="bg-white p-6 rounded-xl shadow-sm border max-w-5xl">
+                    <div class="admin-only mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded">
+                        <h4 class="text-xs font-bold text-yellow-800 mb-2 uppercase">Override Admin</h4>
+                        <div class="flex gap-4">
+                            <select id="override-user" class="w-1/2 border p-1 rounded text-sm"></select>
+                            <input type="date" id="override-date" class="w-1/2 border p-1 rounded text-sm">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <select id="maint-select-site" onchange="filterMaintLocations()" class="border p-2 rounded bg-gray-50"><option value="">1. Sito</option></select>
+                        <select id="maint-select-loc" onchange="filterMaintFloors()" class="border p-2 rounded bg-gray-50" disabled><option value="">2. Zona</option></select>
+                        <select id="maint-select-floor" onchange="filterMaintPanels()" class="border p-2 rounded bg-gray-50" disabled><option value="">3. Piano</option></select>
+                        <select id="maint-select-panel" class="border p-2 rounded font-bold bg-white" disabled><option value="">4. Quadro</option></select>
+                    </div>
+                    <div class="mb-6">
+                         <label class="block text-sm font-medium mb-1">Tipo Manutenzione</label>
+                         <select id="select-type" class="w-full border p-2 rounded">
+                            <option value="Mensile">Mensile</option><option value="Trimestrale">Trimestrale</option>
+                            <option value="Semestrale">Semestrale</option><option value="Annuale">Annuale</option>
+                         </select>
+                    </div>
+                    <button onclick="loadChecklist()" class="w-full bg-indigo-600 text-white py-2 rounded font-bold mb-6">Carica Checklist</button>
+                    <div id="checklist-container" class="hidden border-t pt-6">
+                        <div id="checklist-items" class="space-y-3 mb-6"></div>
+                        <textarea id="general-notes" rows="3" class="w-full border p-3 rounded mb-4" placeholder="Note generali..."></textarea>
+                        <button onclick="saveRecord()" class="w-full bg-emerald-600 text-white py-3 rounded font-bold">Salva Intervento</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- HISTORY VIEW -->
+            <section id="view-history" class="view">
+                <h2 class="text-3xl font-bold mb-8">Storico Globale</h2>
+                <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+                    <div class="bg-gray-50 p-3 border-b text-xs text-gray-500 uppercase font-bold flex">
+                        <div class="flex-1">Dettaglio Intervento</div>
+                        <div class="w-24 text-center">Azioni</div>
+                    </div>
+                    <div id="history-list" class="divide-y divide-gray-100"></div>
+                </div>
+            </section>
+
+            <!-- USERS VIEW -->
+            <section id="view-users" class="view">
+                <h2 class="text-3xl font-bold mb-8">Utenti</h2>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-1 bg-indigo-50 p-6 rounded border border-indigo-100 h-fit">
+                        <h3 class="font-bold text-indigo-900 mb-4">Nuovo Utente</h3>
+                        <input type="text" id="new-username" placeholder="Username" class="w-full border p-2 rounded mb-2">
+                        <input type="password" id="new-password" placeholder="Password" class="w-full border p-2 rounded mb-2">
+                        <select id="new-role" class="w-full border p-2 rounded mb-4"><option value="operator">Operatore</option><option value="admin">Admin</option></select>
+                        <button onclick="createUser()" class="w-full bg-indigo-600 text-white py-2 rounded font-bold">Crea</button>
+                    </div>
+                    <div class="lg:col-span-2 bg-white rounded border p-6">
+                        <h3 class="font-bold mb-4">Lista Utenti</h3>
+                        <div id="users-list" class="space-y-2"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CONFIG VIEW -->
+            <section id="view-config" class="view">
+                <h2 class="text-3xl font-bold mb-8">Configurazione</h2>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="space-y-6">
+                        <div class="bg-white p-6 rounded shadow-sm border admin-only">
+                            <h3 class="font-bold mb-4 flex items-center gap-2"><i data-lucide="image" class="w-4 h-4 text-pink-500"></i> Logo Report</h3 class="font-bold mb-4">
+                            <div class="flex items-center gap-4">
+                                <div id="logo-preview-container" class="w-16 h-16 bg-gray-100 rounded flex items-center justify-center border overflow-hidden text-xs text-gray-400">No Logo</div>
+                                <input type="file" id="logo-upload" accept="image/*" class="text-sm text-slate-500"/>
+                            </div>
+                            <button onclick="saveLogo()" class="mt-2 bg-gray-800 text-white px-3 py-1 rounded text-xs">Salva</button>
+                        </div>
+                        <div class="bg-white p-6 rounded shadow-sm border">
+                            <h3 class="font-bold mb-2 text-purple-600">1. Siti</h3>
+                            <div class="flex gap-2 mb-2 perm-enable-sites"><input type="text" id="new-site-name" placeholder="Nuovo Sito" class="flex-1 border p-1 rounded text-sm"><button onclick="addSite()" class="bg-purple-600 text-white p-1 rounded"><i data-lucide="plus" class="w-4 h-4"></i></button></div>
+                            <div id="config-sites-list" class="max-h-32 overflow-y-auto space-y-1"></div>
+                            <div id="perm-sites" class="text-xs text-red-500 hidden">Permesso negato</div>
+                        </div>
+                        <div class="bg-white p-6 rounded shadow-sm border">
+                            <h3 class="font-bold mb-2 text-indigo-600">2. Zone</h3>
+                            <select id="config-loc-site-select" onchange="renderConfigLocations()" class="w-full border p-1 rounded text-sm mb-2"><option value="">Seleziona Sito...</option></select>
+                            <div class="flex gap-2 mb-2 perm-enable-locs"><input type="text" id="new-loc-name" placeholder="Nuova Zona" class="flex-1 border p-1 rounded text-sm"><button onclick="addLocation()" class="bg-indigo-600 text-white p-1 rounded"><i data-lucide="plus" class="w-4 h-4"></i></button></div>
+                            <div id="config-locations-list" class="max-h-32 overflow-y-auto space-y-1"></div>
+                            <div id="perm-locs" class="text-xs text-red-500 hidden">Permesso negato</div>
+                        </div>
+                        <div class="bg-white p-6 rounded shadow-sm border">
+                            <h3 class="font-bold mb-2 text-orange-600">3. Piani</h3>
+                            <div class="flex gap-2 mb-2 perm-enable-floors"><input type="text" id="new-floor-name" placeholder="Nuovo Piano" class="flex-1 border p-1 rounded text-sm"><button onclick="addFloor()" class="bg-orange-500 text-white p-1 rounded"><i data-lucide="plus" class="w-4 h-4"></i></button></div>
+                            <div id="config-floors-list" class="max-h-32 overflow-y-auto space-y-1"></div>
+                            <div id="perm-floors" class="text-xs text-red-500 hidden">Permesso negato</div>
+                        </div>
+                    </div>
+                    <div class="space-y-6">
+                        <div class="bg-white p-6 rounded shadow-sm border">
+                            <h3 class="font-bold mb-4 text-blue-600">4. Quadri Elettrici</h3>
+                            <div class="space-y-2 mb-4 bg-gray-50 p-3 rounded border perm-enable-panels">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <select id="new-panel-site" onchange="updateNewPanelLocs()" class="border p-1 rounded text-sm"><option value="">Sito...</option></select>
+                                    <select id="new-panel-loc" class="border p-1 rounded text-sm" disabled><option value="">Zona...</option></select>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                     <select id="new-panel-floor" class="border p-1 rounded text-sm"><option value="">Piano...</option></select>
+                                     <input type="text" id="new-panel-name" placeholder="Nome Quadro" class="border p-1 rounded text-sm">
+                                </div>
+                                <button onclick="addPanel()" class="w-full bg-blue-600 text-white p-1 rounded text-sm font-bold">Aggiungi Quadro</button>
+                            </div>
+                            <div id="config-panels-list" class="max-h-64 overflow-y-auto space-y-2"></div>
+                            <div id="perm-panels" class="text-xs text-red-500 hidden">Permesso negato</div>
+                        </div>
+                        <div class="bg-white p-6 rounded shadow-sm border">
+                            <h3 class="font-bold mb-4 text-emerald-600">Checklist</h3>
+                            <div class="flex gap-2 mb-4 overflow-x-auto"><button onclick="setConfigTab('monthlyChecks')" class="cfg-tab active border px-2 text-xs rounded border-blue-600 bg-blue-100">M</button><button onclick="setConfigTab('quarterlyChecks')" class="cfg-tab border px-2 text-xs rounded">T</button><button onclick="setConfigTab('semiannualChecks')" class="cfg-tab border px-2 text-xs rounded">S</button><button onclick="setConfigTab('annualChecks')" class="cfg-tab border px-2 text-xs rounded">A</button></div>
+                            <div id="config-checks-list" class="max-h-32 overflow-y-auto space-y-2 mb-4 border p-2"></div>
+                            <div class="flex gap-2 perm-enable-checks"><input type="text" id="new-check-item" class="flex-1 border p-2 rounded text-sm"><button onclick="addCheckItem()" class="bg-emerald-600 text-white p-2 rounded"><i data-lucide="plus" class="w-4 h-4"></i></button></div>
+                            <div id="perm-checks" class="text-xs text-red-500 hidden mb-2">Permesso negato</div>
+                            <button onclick="saveConfiguration()" class="w-full mt-4 bg-gray-800 text-white py-2 rounded text-sm font-bold perm-enable-checks">Salva Modifiche</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- REPORTS VIEW -->
+            <section id="view-reports" class="view">
+                <h2 class="text-3xl font-bold mb-8">Report & Export</h2>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="bg-white p-6 rounded-xl border shadow-sm space-y-6">
+                        <div><label class="text-sm font-bold text-gray-700 block mb-1">Titolo</label><input type="text" id="pdf-header" value="Registro Manutenzioni" class="w-full border p-2 rounded"></div>
+                        <div><label class="text-sm font-bold text-gray-700 block mb-1">File</label><input type="text" id="pdf-filename" value="report_manutenzione" class="w-full border p-2 rounded"></div>
+                        
+                        <div class="p-3 bg-blue-50 rounded border border-blue-100">
+                            <p class="text-xs font-bold text-blue-800 uppercase mb-2">Periodo</p>
+                            <div class="grid grid-cols-3 gap-2 mb-2">
+                                <div><label class="text-xs block">Anno</label><input type="number" id="filter-year" class="w-full border p-1 rounded text-sm" placeholder="Es. 2025"></div>
+                                <div><label class="text-xs block">Dal</label><input type="date" id="filter-date-start" class="w-full border p-1 rounded text-sm"></div>
+                                <div><label class="text-xs block">Al</label><input type="date" id="filter-date-end" class="w-full border p-1 rounded text-sm"></div>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded border">
+                            <p class="text-xs font-bold text-gray-500 uppercase mb-2">Luogo</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <select id="report-site" onchange="updateReportLocs()" class="border p-1 rounded text-sm"><option value="">Tutti Siti</option></select>
+                                <select id="report-loc" class="border p-1 rounded text-sm" disabled><option value="">Tutte Zone</option></select>
+                                <select id="report-floor" class="border p-1 rounded text-sm"><option value="">Tutti Piani</option></select>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-3 text-sm">
+                            <label><input type="checkbox" class="report-type-cb" value="Mensile" checked> Mensile</label>
+                            <label><input type="checkbox" class="report-type-cb" value="Trimestrale" checked> Trimestrale</label>
+                            <label><input type="checkbox" class="report-type-cb" value="Semestrale" checked> Semestrale</label>
+                            <label><input type="checkbox" class="report-type-cb" value="Annuale" checked> Annuale</label>
+                        </div>
+                        <div class="flex flex-col gap-2">
+                             <div class="flex gap-2">
+                                <button onclick="previewReportData()" class="flex-1 bg-gray-600 text-white py-3 rounded font-bold flex items-center justify-center gap-2"><i data-lucide="list" class="w-4 h-4"></i> Anteprima Dati</button>
+                                <button onclick="previewPDF()" class="flex-1 bg-blue-600 text-white py-3 rounded font-bold flex items-center justify-center gap-2"><i data-lucide="monitor" class="w-4 h-4"></i> Anteprima Stampa</button>
+                            </div>
+                            <button onclick="generatePDF(false)" class="w-full bg-red-600 text-white py-3 rounded font-bold flex items-center justify-center gap-2"><i data-lucide="file-down" class="w-4 h-4"></i> Scarica PDF</button>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border shadow-sm overflow-auto max-h-[600px]">
+                        <h3 class="font-bold mb-4 text-gray-400 uppercase text-xs">Anteprima Dati (Lista)</h3>
+                        <div id="report-preview-content" class="text-sm space-y-2"><p class="text-gray-400 italic">Clicca 'Anteprima Dati' per vedere la lista, o 'Anteprima Stampa' per il PDF.</p></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL VARI -->
+    <div id="modal-rename" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"><div class="bg-white p-6 rounded-xl w-80 shadow-2xl"><h3 class="font-bold text-lg mb-4">Modifica Nome</h3><input type="text" id="rename-input" class="w-full border p-2 rounded mb-4"><div class="flex justify-end gap-2"><button onclick="closeRenameModal()" class="px-4 py-2 text-gray-500">Annulla</button><button onclick="confirmRename()" class="px-4 py-2 bg-blue-600 text-white rounded font-bold">Salva</button></div></div></div>
+    <div id="modal-panel-edit" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"><div class="bg-white p-6 rounded-xl w-96 shadow-2xl"><h3 class="font-bold text-lg mb-4">Modifica Quadro</h3><div class="space-y-3"><div><label class="text-xs font-bold text-gray-500">Nome</label><input type="text" id="edit-p-name" class="w-full border p-2 rounded"></div><div><label class="text-xs font-bold text-gray-500">Sito</label><select id="edit-p-site" onchange="updateEditPanelLocs()" class="w-full border p-2 rounded"></select></div><div><label class="text-xs font-bold text-gray-500">Zona</label><select id="edit-p-loc" class="w-full border p-2 rounded"></select></div><div><label class="text-xs font-bold text-gray-500">Piano</label><select id="edit-p-floor" class="w-full border p-2 rounded"></select></div></div><div class="flex justify-end gap-2 mt-6"><button onclick="document.getElementById('modal-panel-edit').classList.add('hidden')" class="px-4 py-2 text-gray-500">Annulla</button><button onclick="confirmPanelEdit()" class="px-4 py-2 bg-blue-600 text-white rounded font-bold">Salva</button></div></div></div>
+    <div id="modal-note" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-[80]"><div class="bg-white p-6 rounded w-96 shadow-2xl"><h3 class="font-bold mb-2">Nota</h3><textarea id="note-text" class="w-full border p-2 h-32 rounded"></textarea><div class="flex justify-end gap-2 mt-4"><button onclick="closeNoteModal()" class="bg-gray-200 px-4 py-2 rounded">Esci</button><button onclick="saveNote()" class="bg-blue-600 text-white px-4 py-2 rounded">Salva</button></div></div></div>
+    <div id="modal-user-edit" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"><div class="bg-white p-6 rounded-xl w-96 shadow-2xl"><h3 class="font-bold text-lg mb-4">Modifica Utente</h3><div class="space-y-3"><input type="text" id="edit-username" class="w-full border p-2 rounded bg-gray-100" readonly><select id="edit-role" class="w-full border p-2 rounded"><option value="operator">Operatore</option><option value="admin">Admin</option></select><input type="text" id="edit-password" placeholder="Nuova Password (Opzionale)" class="w-full border p-2 rounded bg-yellow-50"><div id="permissions-container" class="border-t pt-3 mt-3"><p class="text-xs font-bold text-gray-500 mb-2 uppercase">Permessi Modifica</p><div class="grid grid-cols-2 gap-2 text-sm mb-2"><label class="flex items-center gap-1"><input type="checkbox" id="perm-site"> Siti</label><label class="flex items-center gap-1"><input type="checkbox" id="perm-loc"> Zone</label><label class="flex items-center gap-1"><input type="checkbox" id="perm-floor"> Piani</label><label class="flex items-center gap-1"><input type="checkbox" id="perm-panel"> Quadri</label><label class="flex items-center gap-1"><input type="checkbox" id="perm-checks"> Checklist</label></div><p class="text-xs font-bold text-gray-500 mb-2 uppercase">Accesso Sezioni</p><div class="grid grid-cols-2 gap-2 text-sm"><label class="flex items-center gap-1"><input type="checkbox" id="perm-history"> Storico</label><label class="flex items-center gap-1"><input type="checkbox" id="perm-report"> Report</label></div></div></div><div class="flex justify-end gap-2 mt-6"><button onclick="closeUserModal()" class="px-4 py-2 text-gray-500">Annulla</button><button onclick="saveUserChanges()" class="px-4 py-2 bg-indigo-600 text-white rounded font-bold">Salva</button></div></div></div>
+    <div id="modal-delete" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-[90]"><div class="bg-white p-6 rounded w-80 border-l-4 border-red-500 shadow-2xl"><h3 class="font-bold text-red-600 mb-2">Conferma Eliminazione</h3><div class="flex justify-end gap-2 mt-4"><button onclick="closeDeleteModal()" class="bg-gray-200 px-4 py-2 rounded">No</button><button onclick="confirmDelete()" class="bg-red-600 text-white px-4 py-2 rounded">Sì</button></div></div></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, addDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const manualConfig = {
+            apiKey: "AIzaSyCOj4rfM4pr9r156jGr5_a8VeFF94uWBwg",
+            authDomain: "gestione-quadri-belluno.firebaseapp.com",
+            projectId: "gestione-quadri-belluno",
+            storageBucket: "gestione-quadri-belluno.firebasestorage.app",
+            messagingSenderId: "1054514076834",
+            appId: "1:1054514076834:web:df089ad7babd617c954bfb"
+        };
+
+        var appId = (typeof window.__app_id !== 'undefined') ? window.__app_id : 'default-app-id';
+        var firebaseConfig = (typeof window.__firebase_config !== 'undefined') ? JSON.parse(window.__firebase_config) : manualConfig;
+        var initialAuthToken = (typeof window.__initial_auth_token !== 'undefined') ? window.__initial_auth_token : null;
+
+        let app, db, auth, currentUser = null;
+        let state = { sites: [], locations: [], floors: [], panels: [], records: [], users: [], config: {} };
+        let currentEditId = null, deleteContext = null, noteContext = null, userEditContext = null, renameContext = null, panelEditContext = null;
+        let maintenanceData = { checks: [] };
+        let uploadedLogoBase64 = null;
+        let currentConfigTab = 'monthlyChecks';
+        
+        let dashState = { level: 0, siteId: null, locId: null, floorId: null }; 
+
+        window.setConfigTab = (tabKey) => {
+            currentConfigTab = tabKey;
+            document.querySelectorAll('.cfg-tab').forEach(b => b.classList.remove('active', 'border-blue-600', 'bg-blue-100'));
+            
+            const buttonMap = { monthlyChecks: 'M', quarterlyChecks: 'T', semiannualChecks: 'S', annualChecks: 'A' };
+            
+            document.querySelectorAll('.cfg-tab').forEach(btn => {
+                if (btn.textContent === buttonMap[tabKey]) {
+                    btn.classList.add('active', 'border-blue-600', 'bg-blue-100');
+                }
+            });
+
+            renderConfigChecks();
+        };
+
+        async function init() {
+            if (!firebaseConfig.apiKey) return document.getElementById('init-loader').innerHTML = `<div class="p-6 text-center font-bold text-red-600">Configurazione Mancante</div>`;
+            app = initializeApp(firebaseConfig); auth = getAuth(app); db = getFirestore(app);
+            onAuthStateChanged(auth, (u) => u ? loadAppLoginData() : performAuth());
+        }
+        async function performAuth() {
+            try { initialAuthToken ? await signInWithCustomToken(auth, initialAuthToken) : await signInAnonymously(auth); }
+            catch (e) { if(initialAuthToken) await signInAnonymously(auth); }
+        }
+        function getPath(col) { return `artifacts/${appId}/public/data/${col}`; }
+
+        function loadAppLoginData() {
+            document.getElementById('init-loader').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+            onSnapshot(collection(db, getPath('app_users')), (s) => {
+                state.users = s.docs.map(d => ({id: d.id, ...d.data()}));
+                document.getElementById('first-run-hint').classList.toggle('hidden', state.users.length > 0);
+                const ovr = document.getElementById('override-user');
+                if(ovr) ovr.innerHTML = '<option value="">-- Utente Corrente --</option>' + state.users.map(u=>`<option value="${u.username}">${u.username}</option>`).join('');
+            });
+        }
+
+        window.login = async (e) => {
+            e.preventDefault();
+            const u = document.getElementById('login-user').value.trim(), p = document.getElementById('login-pass').value.trim();
+            if(state.users.length===0 && u==='admin' && p==='admin') {
+                await addDoc(collection(db, getPath('app_users')), { username:'admin', password:'admin', role:'admin', permissions: {site:true, loc:true, floor:true, panel:true, checks:true, history:true, report:true} });
+                return location.reload();
+            }
+            const user = state.users.find(x => x.username === u && x.password === p);
+            if(user) {
+                currentUser = user;
+                if(!currentUser.permissions) currentUser.permissions = {site:false, loc:false, floor:false, panel:false, checks:false, history:false, report:false};
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-container').classList.remove('hidden');
+                document.getElementById('display-username').innerText = user.username;
+                document.getElementById('display-role').innerText = user.role;
+                document.getElementById('avatar-initial').innerText = user.username.charAt(0).toUpperCase();
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = user.role === 'admin' ? 'block' : 'none');
+                
+                const canHist = user.role === 'admin' || user.permissions.history;
+                const canRep = user.role === 'admin' || user.permissions.report;
+                document.getElementById('nav-history').classList.toggle('perm-hidden', !canHist);
+                document.getElementById('nav-reports').classList.toggle('perm-hidden', !canRep);
+
+                setupDataListeners();
+                resetDashboard();
+                nav('dashboard');
+            } else document.getElementById('login-msg').innerText = "Credenziali errate";
+        };
+        window.logout = () => location.reload();
+        document.getElementById('login-form').addEventListener('submit', window.login);
+
+        function setupDataListeners() {
+            ['sites', 'locations', 'floors', 'panels'].forEach(col => {
+                onSnapshot(collection(db, getPath(col)), (s) => {
+                    state[col] = s.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));
+                    if(col !== 'floors') renderSitesSelects(); 
+                    if(col === 'panels') renderPanelsList();
+                    renderConfigFloors();
+                    if(col === 'sites' || col === 'locations') updateReportLocs(); 
+                    refreshDashboard();
+                });
+            });
+            onSnapshot(doc(db, getPath('config'), 'main'), (s) => {
+                state.config = s.exists() ? s.data() : { monthlyChecks: [] };
+                renderConfigChecks();
+                if(state.config.logo) document.getElementById('logo-preview-container').innerHTML = `<img src="${state.config.logo}" class="w-full h-full object-contain">`;
+            });
+            onSnapshot(collection(db, getPath('records')), (s) => {
+                state.records = s.docs.map(d => ({id: d.id, ...d.data(), date: d.data().date?.toDate()})).sort((a,b)=> b.date - a.date);
+                renderHistory();
+            });
+            if(currentUser.role === 'admin') {
+                onSnapshot(collection(db, getPath('app_users')), (s) => {
+                    state.users = s.docs.map(d => ({id: d.id, ...d.data()}));
+                    renderUsersList();
+                });
+            }
+        }
+
+        function canEdit(type) { return currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions[type]); }
+        window.nav = (id) => {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(`view-${id}`).classList.add('active');
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active', 'bg-gray-800', 'border-l-4', 'border-emerald-500'));
+            if(event && event.currentTarget) event.currentTarget.classList.add('active', 'bg-gray-800', 'border-l-4', 'border-emerald-500');
+            if(id === 'config') { toggleConfigSections('site', 'sites'); toggleConfigSections('loc', 'locs'); toggleConfigSections('floor', 'floors'); toggleConfigSections('panel', 'panels'); toggleConfigSections('checks', 'checks'); }
+            lucide.createIcons();
+        };
+        function toggleConfigSections(permKey, domKey) {
+            const allowed = canEdit(permKey);
+            document.querySelectorAll(`.perm-enable-${domKey}`).forEach(el => el.style.display = allowed ? 'flex' : 'none');
+            const warning = document.getElementById(`perm-${domKey}`);
+            if(warning) warning.style.display = allowed ? 'none' : 'block';
+        }
+
+        // --- DASHBOARD ---
+        const EXPECTED_MAINTENANCE = { 'Mensile': 12, 'Trimestrale': 4, 'Semestrale': 2, 'Annuale': 1 };
+        const MAINT_TYPES = ['Mensile', 'Trimestrale', 'Semestrale', 'Annuale'];
+
+        window.renderActivitySummary = () => {
+            const tableContainer = document.getElementById('activity-summary-table');
+            const siteId = dashState.siteId;
+            if (!siteId || !tableContainer) return;
+
+            const filterYear = document.getElementById('summary-filter-year')?.value;
+            const filterLoc = document.getElementById('summary-filter-loc')?.value;
+            const filterFloor = document.getElementById('summary-filter-floor')?.value;
+            
+            tableContainer.innerHTML = `<p class="p-4 text-gray-500 italic flex items-center gap-2"><div class="loader w-4 h-4"></div> Elaborazione dati...</p>`;
+
+            const siteRecords = state.records.filter(r => r.siteId === siteId && new Date(r.date).getFullYear().toString() === filterYear);
+
+            let panelsInSite = state.panels.filter(p => p.siteId === siteId);
+            if (filterLoc) panelsInSite = panelsInSite.filter(p => p.locationId === filterLoc);
+            if (filterFloor) panelsInSite = panelsInSite.filter(p => p.floorId === filterFloor);
+
+            if (panelsInSite.length === 0) {
+                tableContainer.innerHTML = `<p class="p-4 text-gray-500 italic">Nessun quadro trovato con i filtri selezionati.</p>`;
+                return;
+            }
+
+            const summaryData = panelsInSite.map(panel => {
+                const panelRecords = siteRecords.filter(r => r.panelId === panel.id);
+                const counts = MAINT_TYPES.reduce((acc, type) => {
+                    acc[type] = panelRecords.filter(r => r.type === type).length;
+                    return acc;
+                }, {});
+
+                const locName = state.locations.find(l => l.id === panel.locationId)?.name || 'N/D';
+                const floorName = state.floors.find(f => f.id === panel.floorId)?.name || 'N/D';
+                
+                return { panelId: panel.id, panelName: panel.name, locationName: locName, floorName: floorName, counts: counts };
+            }).sort((a,b) => a.panelName.localeCompare(b.panelName));
+
+            let tableHtml = `<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="sticky left-0 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">Quadro</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">Zona/Piano</th>
+                        ${MAINT_TYPES.map(type => `<th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">${type}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    ${summaryData.map(data => {
+                        const needsAttention = MAINT_TYPES.some(type => data.counts[type] < EXPECTED_MAINTENANCE[type]);
+                        const rowClass = needsAttention ? 'hover:bg-yellow-50' : 'hover:bg-green-50';
+                        return `<tr class="${rowClass} cursor-pointer" onclick="openPanelHistory('${data.panelId}')">
+                            <td class="sticky left-0 bg-white group-hover:bg-inherit px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${data.panelName}</td>
+                            <td class="px-4 py-4 whitespace-nowrap text-xs text-gray-500">${data.locationName} / ${data.floorName}</td>
+                            ${MAINT_TYPES.map(type => {
+                                const count = data.counts[type];
+                                const expected = EXPECTED_MAINTENANCE[type];
+                                const text = `${count} di ${expected}`;
+                                const colorClass = count === expected ? 'text-green-600 font-bold' : (count > 0 ? 'text-amber-600 font-bold' : 'text-red-600');
+                                return `<td class="px-4 py-4 whitespace-nowrap text-sm text-center ${colorClass}">${text}</td>`;
+                            }).join('')}
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table></div>`;
+
+            tableContainer.innerHTML = tableHtml;
+            lucide.createIcons();
+        };
+
+        window.resetDashboard = () => { dashState = { level: 0, siteId: null, locId: null, floorId: null }; refreshDashboard(); }
+        window.goBack = () => {
+            if (dashState.level === 3) drillDown(2, dashState.locId);
+            else if (dashState.level === 2) drillDown(1, dashState.siteId);
+            else if (dashState.level === 1) drillDown(0);
+        };
+
+        function refreshDashboard() {
+            const area = document.getElementById('dash-content-area');
+            const bread = document.getElementById('dash-breadcrumbs');
+            let html = ''; let breadHtml = '';
+            
+            // NEW: Back Button Logic
+            const backBtnHtml = dashState.level > 0 ? `<button onclick="goBack()" class="mr-2 px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-full text-xs font-bold flex items-center gap-1 transition"><i data-lucide="arrow-left" class="w-3 h-3"></i> Indietro</button>` : '';
+
+            if(dashState.level === 0) {
+                breadHtml = '';
+                html = `<div class="grid grid-cols-1 md:grid-cols-3 gap-4">` + state.sites.map(s => 
+                    `<div onclick="drillDown(1, '${s.id}')" class="dash-card bg-white p-6 rounded-xl border shadow-sm flex items-center gap-4"><div class="bg-purple-100 p-3 rounded-full text-purple-600"><i data-lucide="map-pin" class="w-6 h-6"></i></div><div><h3 class="font-bold text-lg">${s.name}</h3><p class="text-xs text-gray-500">Clicca per Dettagli</p></div></div>`).join('') + `</div>`;
+            } else if(dashState.level === 1) {
+                const site = state.sites.find(s=>s.id===dashState.siteId);
+                if (!site) return;
+                breadHtml = ` <i data-lucide="chevron-right" class="w-4 h-4 mx-1"></i> ${site.name}`;
+                const locs = state.locations.filter(l=>l.siteId===dashState.siteId);
+                html = `<div class="mb-8">
+                            <h3 class="text-xl font-bold mb-4 flex items-center gap-2"><i data-lucide="layers" class="w-5 h-5 text-indigo-600"></i> Zone (Blocchi)</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                ${locs.length > 0 ? locs.map(l => 
+                                    `<div onclick="drillDown(2, '${l.id}')" class="dash-card bg-white p-6 rounded-xl border shadow-sm flex items-center gap-4"><div class="bg-indigo-100 p-3 rounded-full text-indigo-600"><i data-lucide="layers" class="w-6 h-6"></i></div><div><h3 class="font-bold text-lg">${l.name}</h3><p class="text-xs text-gray-500">Clicca per Piani</p></div></div>`).join('') : '<p class="text-gray-500 italic p-4">Nessuna zona configurata per questo sito.</p>'}
+                            </div>
+                        </div>`;
+                html += `<div class="mt-10 pt-6 border-t border-gray-200">
+                            <h3 class="text-xl font-bold mb-4 flex items-center gap-2"><i data-lucide="calendar-check" class="w-5 h-5 text-emerald-600"></i> Riepilogo Attività</h3>
+                            <div id="activity-summary-filters" class="bg-white p-4 rounded-lg shadow-sm border mb-4 flex flex-wrap gap-4 items-end">
+                                <div><label class="text-sm font-medium">Anno</label><select id="summary-filter-year" onchange="renderActivitySummary()" class="border p-2 rounded text-sm w-32"></select></div>
+                                <div><label class="text-sm font-medium">Zona (Blocco)</label><select id="summary-filter-loc" onchange="renderActivitySummary()" class="border p-2 rounded text-sm w-40"></select></div>
+                                <div><label class="text-sm font-medium">Piano</label><select id="summary-filter-floor" onchange="renderActivitySummary()" class="border p-2 rounded text-sm w-40"></select></div>
+                            </div>
+                            <div id="activity-summary-table" class="bg-white rounded-xl border shadow-sm overflow-x-auto relative">
+                                <p class="p-4 text-gray-500 italic">Caricamento riepilogo...</p>
+                            </div>
+                        </div>`;
+                setTimeout(() => {
+                    const allYears = state.records.map(r => new Date(r.date).getFullYear());
+                    const uniqueYears = [...new Set(allYears)].sort((a,b) => b-a);
+                    const currentYear = new Date().getFullYear();
+                    if(!uniqueYears.includes(currentYear)) uniqueYears.unshift(currentYear);
+                    const yearSelect = document.getElementById('summary-filter-year');
+                    yearSelect.innerHTML = uniqueYears.map(y => `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`).join('');
+                    const locSelect = document.getElementById('summary-filter-loc');
+                    locSelect.innerHTML = '<option value="">Tutte le Zone</option>' + state.locations.filter(l => l.siteId === site.id).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+                    const floorSelect = document.getElementById('summary-filter-floor');
+                    floorSelect.innerHTML = '<option value="">Tutti i Piani</option>' + state.floors.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+                    renderActivitySummary(); 
+                }, 0);
+            } else if(dashState.level === 2) {
+                const site = state.sites.find(s=>s.id===dashState.siteId);
+                const loc = state.locations.find(l=>l.id===dashState.locId);
+                breadHtml = ` <i data-lucide="chevron-right" class="w-4 h-4 mx-1"></i> <button onclick="drillDown(1, '${site.id}')" class="hover:underline">${site.name}</button> <i data-lucide="chevron-right" class="w-4 h-4 mx-1"></i> ${loc.name}`;
+                const floors = state.floors; 
+                html = `<div class="grid grid-cols-1 md:grid-cols-3 gap-4">` + floors.map(f => 
+                    `<div onclick="drillDown(3, '${f.id}')" class="dash-card bg-white p-6 rounded-xl border shadow-sm flex items-center gap-4"><div class="bg-orange-100 p-3 rounded-full text-orange-600"><i data-lucide="align-justify" class="w-6 h-6"></i></div><div><h3 class="font-bold text-lg">${f.name}</h3><p class="text-xs text-gray-500">Clicca per Quadri</p></div></div>`).join('') + `</div>`;
+            } else if(dashState.level === 3) {
+                const site = state.sites.find(s=>s.id===dashState.siteId);
+                const loc = state.locations.find(l=>l.id===dashState.locId);
+                const floor = state.floors.find(f=>f.id===dashState.floorId);
+                breadHtml = ` <i data-lucide="chevron-right" class="w-4 h-4 mx-1"></i> <button onclick="drillDown(1, '${site.id}')" class="hover:underline">${site.name}</button> <i data-lucide="chevron-right" class="w-4 h-4 mx-1"></i> <button onclick="drillDown(2, '${loc.id}')" class="hover:underline">${loc.name}</button> <i data-lucide="chevron-right" class="w-4 h-4 mx-1"></i> ${floor.name}`;
+                const panels = state.panels.filter(p => p.siteId===dashState.siteId && p.locationId===dashState.locId && p.floorId===dashState.floorId);
+                if(panels.length === 0) html = `<p class="text-gray-500 italic">Nessun quadro in questo piano.</p>`;
+                else {
+                    html = `<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">` + panels.map(p => 
+                        `<div onclick="openPanelHistory('${p.id}')" class="dash-card bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center group"><div><h3 class="font-bold text-gray-800">${p.name}</h3><p class="text-xs text-gray-500">Vedi Storico</p></div><div class="w-3 h-3 rounded-full bg-emerald-500 shadow-sm" title="Attivo"></div></div>`).join('') + `</div>`;
+                }
+            }
+            area.innerHTML = html; bread.innerHTML = backBtnHtml + breadHtml; lucide.createIcons();
+        }
+
+        window.drillDown = (lvl, id) => {
+            dashState.level = lvl;
+            if(lvl===1) { dashState.siteId = id; dashState.locId=null; dashState.floorId=null; }
+            if(lvl===2) { dashState.locId = id; dashState.floorId=null; }
+            if(lvl===3) { dashState.floorId = id; }
+            refreshDashboard();
+        };
+
+        window.goToNewMaintenance = (pId) => {
+            const p = state.panels.find(x => x.id === pId);
+            if(!p) return;
+            
+            closePanelHistory(); 
+            cancelEdit();
+            nav('maintenance'); 
+
+            const siteSelect = document.getElementById('maint-select-site');
+            siteSelect.value = p.siteId;
+            filterMaintLocations(); 
+
+            const locSelect = document.getElementById('maint-select-loc');
+            locSelect.value = p.locationId;
+            filterMaintFloors(); 
+
+            const floorSelect = document.getElementById('maint-select-floor');
+            floorSelect.value = p.floorId;
+            filterMaintPanels(); 
+
+            const panelSelect = document.getElementById('maint-select-panel');
+            panelSelect.value = p.id;
+        };
+
+        window.openPanelHistory = (pId) => {
+            const p = state.panels.find(x=>x.id===pId);
+            
+            // Setup Title Click action
+            const titleContainer = document.getElementById('modal-history-title-container');
+            document.getElementById('modal-history-title').innerText = p.name;
+            titleContainer.onclick = () => goToNewMaintenance(pId);
+            
+            const recs = state.records.filter(r => r.panelId === pId);
+            document.getElementById('modal-history-list').innerHTML = recs.length ? recs.map(r => `<div onclick="showRecordDetails('${r.id}')" class="p-3 border-b flex justify-between items-center hover:bg-blue-50 cursor-pointer transition-colors group"><div><span class="font-bold text-sm">${new Date(r.date).toLocaleDateString()}</span><span class="text-xs bg-blue-100 text-blue-800 px-2 rounded mx-2">${r.type}</span><div class="text-xs text-gray-500">Tecnico: ${r.userId}</div></div><div class="flex gap-2 items-center" onclick="event.stopPropagation()"><button onclick="editRecord('${r.id}')" class="hidden text-blue-600 hover:underline text-xs admin-only-act">Modifica</button><button onclick="askDelete('${r.id}','record')" class="hidden text-red-600 hover:underline text-xs admin-only-act">Elimina</button><i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 group-hover:text-blue-400 ml-2"></i></div></div>`).join('') : '<p class="text-gray-500 p-4">Nessuna manutenzione.</p>';
+            if(currentUser.role === 'admin') document.querySelectorAll('.admin-only-act').forEach(el => el.classList.remove('hidden'));
+            document.getElementById('modal-panel-history').classList.remove('hidden'); document.getElementById('modal-panel-history').classList.add('flex');
+            lucide.createIcons();
+        };
+        window.closePanelHistory = () => { document.getElementById('modal-panel-history').classList.add('hidden'); document.getElementById('modal-panel-history').classList.remove('flex'); };
+
+        // --- MAINTENANCE ---
+        window.filterMaintLocations = () => { const s=document.getElementById('maint-select-site').value; const lSel = document.getElementById('maint-select-loc'); lSel.disabled = !s; lSel.innerHTML = '<option value="">2. Zona</option>' + state.locations.filter(l=>l.siteId===s).map(l=>`<option value="${l.id}">${l.name}</option>`); document.getElementById('maint-select-floor').disabled=true; document.getElementById('maint-select-panel').disabled=true; };
+        window.filterMaintFloors = () => { const l = document.getElementById('maint-select-loc').value; const fSel = document.getElementById('maint-select-floor'); fSel.disabled = !l; fSel.innerHTML = '<option value="">3. Piano</option>' + state.floors.map(f=>`<option value="${f.id}">${f.name}</option>`); document.getElementById('maint-select-panel').disabled=true; };
+        window.filterMaintPanels = () => { const s = document.getElementById('maint-select-site').value; const l = document.getElementById('maint-select-loc').value; const f = document.getElementById('maint-select-floor').value; const pSel = document.getElementById('maint-select-panel'); pSel.disabled = !f; pSel.innerHTML = '<option value="">4. Quadro</option>' + state.panels.filter(p => p.siteId===s && p.locationId===l && p.floorId===f).map(p=>`<option value="${p.id}">${p.name}</option>`); };
+        
+        window.loadChecklist = () => {
+            const pId = document.getElementById('maint-select-panel').value;
+            if(!pId) return alert("Seleziona Quadro");
+            const type = document.getElementById('select-type').value;
+            let key = 'monthlyChecks'; if(type.includes('Trimestrale')) key='quarterlyChecks'; if(type.includes('Semestrale')) key='semiannualChecks'; if(type.includes('Annuale')) key='annualChecks';
+            if (!currentEditId) maintenanceData.checks = (state.config[key] || []).map(t => ({ item:t, status:'Non Eseguita', notes:'', executor:null, date:null }));
+            document.getElementById('checklist-container').classList.remove('hidden');
+            renderChecklistUI();
+        };
+        
+        function renderChecklistUI() {
+            const div = document.getElementById('checklist-items');
+            div.innerHTML = maintenanceData.checks.map((c, i) => {
+                const isDone = c.status === 'Eseguita'; const isOther = c.status === 'Altro';
+                const selectClass = isDone ? 'text-green-600 font-bold border-green-500' : (isOther ? 'text-amber-600 font-bold border-amber-500' : 'text-gray-600 border-gray-300');
+                const noteClass = c.notes ? 'text-blue-600 bg-blue-50 border-blue-200' : 'text-gray-400 bg-gray-50';
+                return `<div class="flex flex-col p-3 border rounded-lg bg-white shadow-sm gap-2 transition-colors ${isDone ? 'bg-green-50 border-green-200' : ''}"><div class="flex justify-between items-center"><span class="text-sm font-medium flex-1 ${isDone ? 'text-green-800' : ''}">${c.item}</span><div class="flex gap-2 items-center"><button onclick="openNoteModal(${i})" class="p-2 rounded border ${noteClass} hover:bg-gray-100 transition" title="Note"><i data-lucide="message-square" class="w-4 h-4"></i></button><select id="check-select-${i}" onchange="updateCheckStatus(${i}, this.value)" class="border p-2 text-sm rounded bg-white focus:ring-2 focus:ring-blue-500 outline-none ${selectClass}"><option value="Non Eseguita" ${c.status==='Non Eseguita'?'selected':''}>Non Eseguita</option><option value="Eseguita" ${c.status==='Eseguita'?'selected':''}>Eseguita</option><option value="Altro" ${c.status==='Altro'?'selected':''}>Altro</option></select></div></div>${isDone && c.executor ? `<div class="text-xs text-right text-green-700 font-medium flex items-center justify-end gap-1 mt-1"><i data-lucide="check" class="w-3 h-3"></i> Fatto: ${c.executor} - ${new Date(c.date).toLocaleTimeString()}</div>` : ''}</div>`;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        window.updateCheckStatus = (i, val) => {
+            maintenanceData.checks[i].status = val;
+            if(val === 'Eseguita') {
+                maintenanceData.checks[i].executor = currentUser.username; maintenanceData.checks[i].date = new Date().toISOString();
+                if(currentUser.role==='admin') {
+                    if(document.getElementById('override-user').value) maintenanceData.checks[i].executor = document.getElementById('override-user').value;
+                    if(document.getElementById('override-date').value) maintenanceData.checks[i].date = new Date(document.getElementById('override-date').value).toISOString();
+                }
+            } else { maintenanceData.checks[i].executor = null; maintenanceData.checks[i].date = null; }
+            renderChecklistUI();
+        };
+
+        window.saveRecord = async () => {
+            const pId = document.getElementById('maint-select-panel').value;
+            const p = state.panels.find(x=>x.id===pId);
+            let u=currentUser.username, d=new Date();
+            if(currentUser.role==='admin') {
+                if(document.getElementById('override-user').value) u=document.getElementById('override-user').value;
+                if(document.getElementById('override-date').value) d=new Date(document.getElementById('override-date').value);
+            }
+            const rec = { panelId:pId, panelName:p.name, siteId:p.siteId, locationId:p.locationId, floorId:p.floorId, type:document.getElementById('select-type').value, checks:maintenanceData.checks, generalNotes:document.getElementById('general-notes').value, userId:u, date:d };
+            if(currentEditId) await updateDoc(doc(db, getPath('records'), currentEditId), rec);
+            else await addDoc(collection(db, getPath('records')), rec);
+            alert("Salvato"); cancelEdit(); nav('dashboard');
+        };
+
+        // --- REPORTS & PDF ---
+        window.updateReportLocs = () => { const sId = document.getElementById('report-site').value; const locSel = document.getElementById('report-loc'); locSel.disabled = !sId; locSel.innerHTML = '<option value="">Tutte le Zone</option>' + state.locations.filter(l => l.siteId === sId).map(l => `<option value="${l.id}">${l.name}</option>`).join(''); };
+        function getFilteredData() {
+            const fSite = document.getElementById('report-site').value; const fLoc = document.getElementById('report-loc').value; const fFloor = document.getElementById('report-floor').value;
+            const types = Array.from(document.querySelectorAll('.report-type-cb:checked')).map(cb => cb.value);
+            const year = document.getElementById('filter-year').value; const start = document.getElementById('filter-date-start').value; const end = document.getElementById('filter-date-end').value;
+            return state.records.filter(r => {
+                if (fSite && r.siteId !== fSite) return false; if (fLoc && r.locationId !== fLoc) return false;
+                if (fFloor) { const p = state.panels.find(x => x.id === r.panelId); if (p && p.floorId !== fFloor) return false; }
+                if (!types.includes(r.type)) return false;
+                const d = new Date(r.date);
+                if (year && d.getFullYear() != year) return false; if (start && d < new Date(start)) return false;
+                if (end) { const endDate = new Date(end); endDate.setHours(23,59,59); if (d > endDate) return false; }
+                return true;
+            });
+        }
+
+        window.previewReportData = () => {
+            const data = getFilteredData();
+            const container = document.getElementById('report-preview-content');
+            if(data.length === 0) { container.innerHTML = '<p class="text-red-500">Nessun dato trovato.</p>'; return; }
+            let html = `<p class="font-bold mb-2">Totale Record: ${data.length}</p><ul class="space-y-2">`;
+            data.slice(0, 20).forEach(r => { html += `<li class="border-b pb-1">${new Date(r.date).toLocaleDateString()} - <strong>${r.panelName}</strong> (${r.type})</li>`; });
+            if(data.length > 20) html += `<li class="text-gray-500 italic">... altri ${data.length - 20} record</li>`;
+            html += '</ul>'; container.innerHTML = html;
+        };
+
+        window.previewPDF = () => {
+            const blobUrl = window.generatePDF(true);
+            if(blobUrl) {
+                document.getElementById('pdf-preview-frame').src = blobUrl;
+                document.getElementById('modal-pdf-preview').classList.remove('hidden');
+                document.getElementById('modal-pdf-preview').classList.add('flex');
+            }
+        };
+
+        window.generatePDF = (isPreview = false) => {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const headerTitle = document.getElementById('pdf-header').value || "Report";
+            const fileName = document.getElementById('pdf-filename').value || "report";
+            const data = getFilteredData();
+            
+            data.sort((a, b) => { const pA = a.panelName||""; const pB = b.panelName||""; if(pA<pB)return -1; if(pA>pB)return 1; return new Date(b.date)-new Date(a.date); });
+            const grouped = {};
+            data.forEach(r => {
+                if (!grouped[r.panelId]) {
+                    const sName = state.sites.find(s => s.id === r.siteId)?.name || "N/D";
+                    const lName = state.locations.find(l => l.id === r.locationId)?.name || "N/D";
+                    const p = state.panels.find(p => p.id === r.panelId);
+                    const fName = state.floors.find(f => f.id === p?.floorId)?.name || "N/D";
+                    grouped[r.panelId] = { name: r.panelName, site: sName, loc: lName, floor: fName, records: [] };
+                }
+                grouped[r.panelId].records.push(r);
+            });
+
+            let y = 15;
+            if(state.config.logo) { try { doc.addImage(state.config.logo, 'JPEG', 10, 10, 30, 15, undefined, 'FAST'); } catch(e){} }
+            doc.setFontSize(16); doc.text(headerTitle, 50, 20); doc.setFontSize(10); doc.text(`Generato il: ${new Date().toLocaleDateString()}`, 50, 26); y = 40;
+            if(Object.keys(grouped).length === 0) doc.text("Nessun dato trovato.", 14, y);
+
+            for(const pId in grouped) {
+                const group = grouped[pId];
+                if(y > 250) { doc.addPage(); y = 20; }
+                doc.setFillColor(240, 242, 245); doc.rect(10, y, 190, 10, 'F');
+                doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(40, 40, 40);
+                doc.text(`QUADRO: ${group.name}`, 14, y+6.5);
+                doc.setFontSize(9); doc.setFont("helvetica", "normal");
+                doc.text(`${group.site} > ${group.loc} > ${group.floor}`, 120, y+6.5);
+                y += 15;
+                group.records.forEach(r => {
+                    if(y > 270) { doc.addPage(); y = 20; }
+                    doc.setTextColor(0,0,0); doc.setFont("helvetica", "bold");
+                    doc.text(`• ${new Date(r.date).toLocaleDateString()} (${r.type})`, 14, y);
+                    doc.setFont("helvetica", "normal"); doc.text(`Tecnico: ${r.userId}`, 80, y);
+                    y += 5;
+                    const issues = r.checks.filter(c => c.status !== 'Eseguita' || c.notes);
+                    if(issues.length > 0) {
+                        issues.forEach(c => {
+                             if(y > 280) { doc.addPage(); y = 20; }
+                             doc.setTextColor(220, 38, 38); doc.setFontSize(8);
+                             let statusText = c.status; if (c.status === 'Altro') statusText = "Eseguita Parzialmente - Vedi Note";
+                             const txt = `- ${c.item}: ${statusText} ${c.notes ? '('+c.notes+')' : ''}`;
+                             const splitTxt = doc.splitTextToSize(txt, 170);
+                             doc.text(splitTxt, 20, y);
+                             y += (splitTxt.length * 4);
+                        });
+                        doc.setFontSize(9);
+                    } else { doc.setTextColor(5, 150, 105); doc.setFontSize(8); doc.text("- Tutti i controlli OK", 20, y); y += 4; doc.setFontSize(9); }
+                    if(r.generalNotes) {
+                         if(y > 280) { doc.addPage(); y = 20; }
+                         doc.setTextColor(80,80,80); const n = `Note Gen: ${r.generalNotes}`; const sn = doc.splitTextToSize(n, 170); doc.text(sn, 20, y); y += (sn.length * 4);
+                    }
+                    y += 4;
+                });
+                y += 5;
+            }
+            if(isPreview) {
+                return doc.output('bloburl');
+            } else {
+                doc.save(`${fileName}.pdf`);
+            }
+        };
+
+        // --- MODALS & EDITS ---
+        window.openRenameModal = (id, type, oldName) => { renameContext={id, type}; document.getElementById('rename-input').value=oldName; document.getElementById('modal-rename').classList.remove('hidden'); document.getElementById('modal-rename').classList.add('flex'); };
+        window.closeRenameModal = () => document.getElementById('modal-rename').classList.add('hidden');
+        window.confirmRename = async () => { const n=document.getElementById('rename-input').value.trim(); if(n&&renameContext){ await updateDoc(doc(db, getPath(renameContext.type+'s'), renameContext.id), {name:n}); closeRenameModal(); } };
+        window.editUser = (id) => {
+            userEditContext = id; const u = state.users.find(x => x.id === id);
+            document.getElementById('edit-username').value = u.username;
+            document.getElementById('edit-role').value = u.role;
+            document.getElementById('edit-password').value = '';
+            const p = u.permissions || {};
+            ['site','loc','floor','panel','checks','history','report'].forEach(k => document.getElementById('perm-'+k).checked = !!p[k]);
+            document.getElementById('modal-user-edit').classList.remove('hidden'); document.getElementById('modal-user-edit').classList.add('flex');
+        };
+        window.saveUserChanges = async () => {
+            const upd = { role: document.getElementById('edit-role').value, permissions: { 
+                site: document.getElementById('perm-site').checked, loc: document.getElementById('perm-loc').checked, 
+                floor: document.getElementById('perm-floor').checked, panel: document.getElementById('perm-panel').checked,
+                checks: document.getElementById('perm-checks').checked,
+                history: document.getElementById('perm-history').checked, report: document.getElementById('perm-report').checked
+            }};
+            const pass = document.getElementById('edit-password').value.trim();
+            if(pass) upd.password = pass;
+            await updateDoc(doc(db, getPath('app_users'), userEditContext), upd);
+            document.getElementById('modal-user-edit').classList.add('hidden');
+        };
+        window.closeUserModal = () => document.getElementById('modal-user-edit').classList.add('hidden');
+        
+        // Config Data
+        window.addSite = () => addItem('sites', 'new-site-name');
+        window.addFloor = () => addItem('floors', 'new-floor-name');
+        window.addLocation = () => { const s=document.getElementById('config-loc-site-select').value; if(!s) return alert("Seleziona Sito"); addItem('locations', 'new-loc-name', { siteId: s }); };
+        async function addItem(col, inputId, extras = {}) { const val=document.getElementById(inputId).value.trim(); if(val){ await addDoc(collection(db, getPath(col)), { name: val, ...extras }); document.getElementById(inputId).value = ''; } }
+        document.getElementById('logo-upload').addEventListener('change', (e) => { const file=e.target.files[0]; if(file){ const r=new FileReader(); r.onload=(evt)=>{uploadedLogoBase64=evt.target.result; document.getElementById('logo-preview-container').innerHTML=`<img src="${uploadedLogoBase64}" class="w-full h-full object-contain">`;}; r.readAsDataURL(file); } });
+        window.saveLogo = async () => { if(uploadedLogoBase64) { await updateDoc(doc(db, getPath('config'), 'main'), { logo: uploadedLogoBase64 }); alert("Logo salvato!"); }};
+        function renderConfigChecks() { const list = state.config[currentConfigTab] || []; document.getElementById('config-checks-list').innerHTML = list.map((item, i) => `<div class="flex justify-between items-center p-2 bg-white border-b text-sm"><span>${item}</span><button onclick="removeCheckItem(${i})" class="text-red-400">&times;</button></div>`).join(''); }
+        window.removeCheckItem = (i) => { state.config[currentConfigTab].splice(i, 1); renderConfigChecks(); };
+        window.saveConfiguration = async () => { await setDoc(doc(db, getPath('config'), 'main'), state.config); alert("Salvato"); };
+        window.addCheckItem = () => { const val = document.getElementById('new-check-item').value; if(val) { if(!state.config[currentConfigTab]) state.config[currentConfigTab]=[]; state.config[currentConfigTab].push(val); renderConfigChecks(); document.getElementById('new-check-item').value=''; } };
+        window.openNoteModal = (i) => { noteContext = i; document.getElementById('note-text').value = maintenanceData.checks[i].notes || ''; document.getElementById('modal-note').classList.remove('hidden'); document.getElementById('modal-note').classList.add('flex'); };
+        window.saveNote = () => { maintenanceData.checks[noteContext].notes = document.getElementById('note-text').value; document.getElementById('modal-note').classList.add('hidden'); renderChecklistUI(); };
+        window.closeNoteModal = () => document.getElementById('modal-note').classList.add('hidden');
+        window.renderConfigLocations = () => { const sId = document.getElementById('config-loc-site-select').value; const locs = state.locations.filter(l => l.siteId === sId); renderListWithControls('config-locations-list', locs, 'location'); };
+        function renderConfigFloors() { renderListWithControls('config-floors-list', state.floors, 'floor'); document.getElementById('report-floor').innerHTML = '<option value="">Tutti i Piani</option>' + state.floors.map(f => `<option value="${f.id}">${f.name}</option>`).join(''); }
+        function renderListWithControls(containerId, data, type) { const permKey = type === 'location' ? 'loc' : type; const allowed = canEdit(permKey); document.getElementById(containerId).innerHTML = data.map(item => `<div class="flex justify-between p-2 bg-gray-50 rounded border text-sm items-center"><span>${item.name}</span>${allowed ? `<div class="flex gap-1"><button onclick="openRenameModal('${item.id}', '${type}', '${item.name}')" class="text-blue-500 hover:bg-blue-100 p-1 rounded"><i data-lucide="pencil" class="w-3 h-3"></i></button><button onclick="askDelete('${item.id}', '${type}')" class="text-red-500 hover:bg-red-100 p-1 rounded"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div>` : ''}</div>`).join(''); lucide.createIcons(); }
+        function renderSitesSelects() { const opts = '<option value="">Seleziona Sito...</option>' + state.sites.map(s => `<option value="${s.id}">${s.name}</option>`).join(''); document.getElementById('config-loc-site-select').innerHTML = opts; document.getElementById('new-panel-site').innerHTML = opts; document.getElementById('maint-select-site').innerHTML = opts; document.getElementById('edit-p-site').innerHTML = opts; document.getElementById('report-site').innerHTML = '<option value="">Tutti i Siti</option>' + state.sites.map(s => `<option value="${s.id}">${s.name}</option>`).join(''); renderListWithControls('config-sites-list', state.sites, 'site'); }
+        function renderPanelsList() { const allowed = canEdit('panel'); document.getElementById('config-panels-list').innerHTML = state.panels.map(p => { const s = state.sites.find(x=>x.id===p.siteId)?.name || '?'; const l = state.locations.find(x=>x.id===p.locationId)?.name || '?'; const f = state.floors.find(x=>x.id===p.floorId)?.name || '?'; return `<div class="flex justify-between p-2 bg-white border rounded text-sm items-center mb-2"><div><p class="font-bold">${p.name}</p><p class="text-xs text-gray-500">${s} > ${l} > ${f}</p></div>${allowed ? `<div class="flex gap-1"><button onclick="openEditPanel('${p.id}')" class="text-blue-500 p-1 rounded hover:bg-blue-50"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="askDelete('${p.id}', 'panel')" class="text-red-500 p-1 rounded hover:bg-red-50"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>` : ''}</div>`; }).join(''); lucide.createIcons(); }
+        
+        // --- STORICO GLOBALE E DETTAGLIO RECORD ---
+        function renderHistory() { 
+            const isAdmin = currentUser && currentUser.role === 'admin';
+            document.getElementById('history-list').innerHTML = state.records.map(r => {
+                const adminControls = isAdmin ? `<div class="flex gap-1" onclick="event.stopPropagation()"><button onclick="editRecord('${r.id}')" class="text-blue-500 p-2 hover:bg-blue-50 rounded" title="Modifica"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="askDelete('${r.id}','record')" class="text-red-500 p-2 hover:bg-red-50 rounded" title="Elimina"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>` : '';
+                // Added onclick to the main row div
+                return `<div onclick="showRecordDetails('${r.id}')" class="p-4 hover:bg-blue-50 border-b border-gray-50 flex justify-between items-center cursor-pointer transition-colors group">
+                    <div>
+                        <div class="font-bold text-gray-800 group-hover:text-blue-800 flex items-center gap-2">${r.panelName} <i data-lucide="external-link" class="w-3 h-3 opacity-0 group-hover:opacity-50"></i></div>
+                        <div class="text-sm text-gray-500">${r.type} - ${new Date(r.date).toLocaleDateString()}</div>
+                        <div class="text-xs text-gray-400">Tecnico: ${r.userId}</div>
+                    </div>
+                    ${adminControls}
+                </div>`;
+            }).join(''); 
+            lucide.createIcons(); 
+        }
+
+        window.showRecordDetails = (rId) => {
+            const r = state.records.find(x => x.id === rId);
+            if(!r) return;
+
+            document.getElementById('detail-title').innerText = `${r.panelName} (${r.type})`;
+            document.getElementById('detail-date').innerText = new Date(r.date).toLocaleDateString() + " " + new Date(r.date).toLocaleTimeString();
+            document.getElementById('detail-tech').innerText = `Tecnico: ${r.userId}`;
+
+            const contentDiv = document.getElementById('detail-content');
+            let html = `<div class="space-y-3">`;
+            
+            // General Notes
+            if(r.generalNotes) {
+                html += `<div class="bg-yellow-50 border border-yellow-200 p-3 rounded mb-4">
+                    <p class="text-xs font-bold text-yellow-800 uppercase mb-1">Note Generali</p>
+                    <p class="text-sm text-gray-800 whitespace-pre-wrap">${r.generalNotes}</p>
+                </div>`;
+            }
+
+            // Checklist
+            if(r.checks && r.checks.length > 0) {
+                 html += `<div class="border rounded-lg overflow-hidden">`;
+                 r.checks.forEach(c => {
+                     const isDone = c.status === 'Eseguita';
+                     const isOther = c.status === 'Altro';
+                     const icon = isDone ? 'check-circle' : (isOther ? 'alert-circle' : 'x-circle');
+                     const color = isDone ? 'text-green-600 bg-green-50' : (isOther ? 'text-amber-600 bg-amber-50' : 'text-gray-400 bg-gray-50');
+                     const border = isDone ? 'border-green-100' : (isOther ? 'border-amber-100' : 'border-gray-100');
+
+                     html += `<div class="p-3 border-b last:border-0 ${color} ${border} flex flex-col gap-1">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-sm">${c.item}</span>
+                            <span class="text-xs font-bold uppercase px-2 py-1 rounded bg-white bg-opacity-50 border border-black border-opacity-5">${c.status}</span>
+                        </div>
+                        ${c.notes ? `<div class="text-xs mt-1 p-2 bg-white bg-opacity-60 rounded border border-black border-opacity-5 text-gray-700 italic"><span class="font-bold not-italic">Nota:</span> ${c.notes}</div>` : ''}
+                     </div>`;
+                 });
+                 html += `</div>`;
+            } else {
+                html += `<p class="text-gray-500 italic">Nessuna checklist salvata.</p>`;
+            }
+            
+            html += `</div>`;
+            contentDiv.innerHTML = html;
+
+            document.getElementById('modal-record-detail').classList.remove('hidden');
+            document.getElementById('modal-record-detail').classList.add('flex');
+        };
+        
+        function renderUsersList() { document.getElementById('users-list').innerHTML = state.users.map(u => `<div class="flex justify-between p-2 bg-gray-50 border rounded items-center"><div><span class="font-bold">${u.username}</span> <span class="text-xs bg-gray-200 px-2 rounded">${u.role}</span></div><div class="flex gap-1"><button onclick="editUser('${u.id}')" class="text-blue-500 p-1"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="askDelete('${u.id}','user')" class="text-red-500 p-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>`).join(''); lucide.createIcons(); }
+        window.addPanel=async()=>{const s=document.getElementById('new-panel-site').value,l=document.getElementById('new-panel-loc').value,f=document.getElementById('new-panel-floor').value,n=document.getElementById('new-panel-name').value; if(s&&l&&f&&n){await addDoc(collection(db,getPath('panels')),{name:n,siteId:s,locationId:l,floorId:f});document.getElementById('new-panel-name').value='';}else alert("Campi obbligatori");};
+        window.updateNewPanelLocs=()=>{const s=document.getElementById('new-panel-site').value; populateLocSelect('new-panel-loc', s); document.getElementById('new-panel-floor').innerHTML='<option value="">Piano...</option>'+state.floors.map(f=>`<option value="${f.id}">${f.name}</option>`);};
+        function populateLocSelect(domId, sId){ const dom=document.getElementById(domId); dom.disabled=!sId; dom.innerHTML='<option value="">Zona...</option>'+state.locations.filter(l=>l.siteId===sId).map(l=>`<option value="${l.id}">${l.name}</option>`); }
+        window.openEditPanel=(id)=>{const p=state.panels.find(x=>x.id===id); if(!p)return; panelEditContext=id; document.getElementById('edit-p-name').value=p.name; document.getElementById('edit-p-site').value=p.siteId; populateLocSelect('edit-p-loc',p.siteId); document.getElementById('edit-p-loc').value=p.locationId; document.getElementById('edit-p-floor').innerHTML=state.floors.map(f=>`<option value="${f.id}">${f.name}</option>`).join(''); document.getElementById('edit-p-floor').value=p.floorId; document.getElementById('modal-panel-edit').classList.remove('hidden'); document.getElementById('modal-panel-edit').classList.add('flex'); };
+        window.updateEditPanelLocs=()=>{ populateLocSelect('edit-p-loc', document.getElementById('edit-p-site').value); };
+        window.confirmPanelEdit=async()=>{if(!panelEditContext)return; await updateDoc(doc(db,getPath('panels'),panelEditContext),{name:document.getElementById('edit-p-name').value, siteId:document.getElementById('edit-p-site').value, locationId:document.getElementById('edit-p-loc').value, floorId:document.getElementById('edit-p-floor').value}); document.getElementById('modal-panel-edit').classList.add('hidden'); };
+        window.createUser=async()=>{const u=document.getElementById('new-username').value,p=document.getElementById('new-password').value,r=document.getElementById('new-role').value; if(u&&p){await addDoc(collection(db,getPath('app_users')),{username:u,password:p,role:r,permissions:{site:false,loc:false,floor:false,panel:false,history:false,report:false}});alert("Creato");document.getElementById('new-username').value='';}};
+        window.editRecord=(id)=>{const r=state.records.find(x=>x.id===id); currentEditId=id; maintenanceData.checks=JSON.parse(JSON.stringify(r.checks)); document.getElementById('maintenance-title').innerText="Modifica"; document.getElementById('btn-cancel-edit').classList.remove('hidden'); document.getElementById('general-notes').value=r.generalNotes; nav('maintenance'); document.getElementById('checklist-container').classList.remove('hidden'); renderChecklistUI();};
+        window.cancelEdit=()=>{currentEditId=null; maintenanceData.checks=[]; document.getElementById('maintenance-title').innerText="Nuova Manutenzione"; document.getElementById('btn-cancel-edit').classList.add('hidden'); document.getElementById('checklist-container').classList.add('hidden'); document.getElementById('general-notes').value=''; document.getElementById('maint-select-site').value=''; filterMaintLocations();};
+        document.getElementById('btn-cancel-edit').onclick=window.cancelEdit;
+        window.askDelete=(id,type)=>{deleteContext={id,type}; document.getElementById('modal-delete').classList.remove('hidden'); document.getElementById('modal-delete').classList.add('flex');};
+        window.closeDeleteModal=()=>document.getElementById('modal-delete').classList.add('hidden');
+        window.confirmDelete=async()=>{if(!deleteContext)return; let col='records'; if(deleteContext.type==='site')col='sites'; if(deleteContext.type==='location')col='locations'; if(deleteContext.type==='floor')col='floors'; if(deleteContext.type==='panel')col='panels'; if(deleteContext.type==='user')col='app_users'; await deleteDoc(doc(db,getPath(col),deleteContext.id)); closeDeleteModal();};
+
+        init();
+    </script>
+</body>
+</html>
